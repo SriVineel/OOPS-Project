@@ -1,69 +1,157 @@
+//=============================================================================
 // SpeechBubble.h
-
-// Purpose: A text bubble that can render as "speech", "thought" (cloud), or "shout" (spiky).
-// Responsibilities:
-// - Keep logical text/font/style state.
-// - Own the SFML primitives (sf::Text, sf::ConvexShape) necessary to render the chosen style.
-// - Rebuild polygonal geometry when size/style changes.
+//=============================================================================
+// PURPOSE:
+//   Speech bubble component that displays text in various comic-style shapes.
+//   Supports both procedurally-generated shapes and image-based bubbles.
+//
+// FEATURES:
+//   - Multiple bubble styles: speech, thought, shout, rectangle
+//   - Automatic text wrapping to fit bubble width
+//   - Dynamic font sizing based on bubble dimensions
+//   - Image-based or procedural rendering
+//   - Centered text with style-specific adjustments
+//
+// BUBBLE STYLES:
+//   "speech"           - Round bubble with tail (default)
+//   "speech_rectangle" - Rectangular bubble with tail
+//   "thought"          - Cloud-like thought bubble
+//   "shout"            - Star-burst shout bubble
+//
+// WHERE TO MODIFY:
+//   - Add new bubble styles: Create new rebuild*() method and add to setStyle()
+//   - Change text layout: Modify centerText() and wrapText() methods
+//   - Adjust font sizing: Modify setSize() font calculation
+//   - Change tail position: Modify rebuild*() methods tail coordinates
+//=============================================================================
 
 #pragma once
 
-#include "CanvasObject.h"
-#include <SFML/Graphics.hpp>
 #include <string>
+#include <optional>
+#include <SFML/Graphics.hpp>
+#include "CanvasObject.h"
 
-class SpeechBubble : public CanvasObject {
-private:
-    // Logical state
-    std::string text_;              // Plain text content
-    std::string fontName_;          // Logical font name (from AssetManager), if needed later
-    int fontSize_{14};              // Pixel character size
-    std::string style_{"speech"};   // "speech" | "thought" | "shout"
-
-    // Encapsulated drawing state
-    sf::Font& m_font;               // Non-owning reference to font from AssetManager
-    sf::Text m_text;                // Text object positioned relative to bubble
-    sf::ConvexShape m_shape;        // Merged polygon (body + tail) to minimize draw calls
-
-    // Rebuild dispatch + helpers
-    void rebuild(float w, float h, float radius = 12.f,
-                 float tailLen = 18.f, float tailWidth = 14.f);
-    void rebuildSpeech(float w, float h, float r, float tailLen, float tailW);
-    void rebuildThought(float w, float h);  // "cloud" style
-    void rebuildShout(float w, float h);    // "spiky" style
-    
-    // NEW: Helper to center text in the bubble
-    void centerText();
-
+class SpeechBubble : public CanvasObject
+{
 public:
-    // Construct a bubble with default style and geometry.
+    // Constructor: Create bubble with text and geometry
+    // Parameters:
+    //   id: Unique identifier
+    //   text: Display text (will be wrapped automatically)
+    //   x, y: Position on canvas
+    //   width, height: Bubble dimensions
     SpeechBubble(const std::string& id,
-                 const std::string& text = "",
-                 float x = 0.f, float y = 0.f,
-                 float width = 150.f, float height = 60.f);
-    ~SpeechBubble() override = default;
+                 const std::string& text,
+                 float x, float y,
+                 float width, float height);
 
+    //-------------------------------------------------------------------------
+    // RENDERING - Modify SpeechBubble.cpp::draw() to change display
+    //-------------------------------------------------------------------------
+
+    // Draws bubble shape (or image) and centered text
     void draw(sf::RenderWindow& window) override;
+
+    //-------------------------------------------------------------------------
+    // HIT DETECTION
+    //-------------------------------------------------------------------------
+
+    // Simple AABB hit test (returns true if mouse is inside bubble bounds)
     bool isClicked(float mouseX, float mouseY) const override;
 
-    // Keep both logical and SFML geometry aligned on position change.
+    //-------------------------------------------------------------------------
+    // GEOMETRY OVERRIDES - Update text positioning when bubble moves/resizes
+    //-------------------------------------------------------------------------
+
+    // Override to keep text centered when position changes
     void setPosition(float x, float y) override;
-    void setPosition(const sf::Vector2f& pos) override;
 
-    // Size change triggers shape rebuild for visual consistency.
-    // MODIFIED: Changed from inline to regular method for dynamic font sizing
+    // Override to resize bubble and adjust font size dynamically
     void setSize(float w, float h) override;
-    void setSize(const sf::Vector2f& s) override { setSize(s.x, s.y); }
 
-    // Text and typography controls
+    //-------------------------------------------------------------------------
+    // TEXT PROPERTIES - Modify to change text appearance
+    //-------------------------------------------------------------------------
+
+    // Set/get bubble text content (triggers text wrapping)
     void setText(const std::string& text);
     std::string getText() const;
-    void setFontName(const std::string& fname) { fontName_ = fname; }
-    std::string getFontName() const { return fontName_; }
-    void setFontSize(int size);
-    int getFontSize() const { return fontSize_; }
 
-    // Changing style triggers a rebuild to update the polygon.
-    void setStyle(const std::string& style) { style_ = style; rebuild(width_, height_); }
-    std::string getStyle() const { return style_; }
+    // Set font size in pixels (triggers text rewrap)
+    void setFontSize(int size);
+
+    // Get current font size in pixels
+    int getFontSize() const;
+
+    // Set font by asset name (triggers text rewrap)
+    void setFontName(const std::string& fname);
+
+    //-------------------------------------------------------------------------
+    // BUBBLE STYLE - Modify to change bubble appearance
+    //-------------------------------------------------------------------------
+
+    // Set bubble style: "speech", "thought", "shout", "speech_rectangle"
+    // Will attempt to load image asset first, falls back to procedural
+    void setStyle(const std::string& style);
+
+private:
+    //-------------------------------------------------------------------------
+    // INTERNAL SHAPE BUILDERS - Modify to change bubble geometry
+    //-------------------------------------------------------------------------
+
+    // Master rebuild dispatcher (calls appropriate style method)
+    void rebuild(float w, float h,
+                 float radius = 12.f,
+                 float tailLen = 20.f,
+                 float tailWidth = 10.f);
+
+    // Build round speech bubble with tail
+    void rebuildSpeechRound(float w, float h,
+                            float radius,
+                            float tailLen,
+                            float tailWidth);
+
+    // Build rectangular speech bubble with tail
+    void rebuildSpeechBox(float w, float h,
+                          float radius,
+                          float tailLen,
+                          float tailWidth);
+
+    // Build thought bubble (cloud-like shape with multiple blobs)
+    void rebuildThought(float w, float h);
+
+    // Build shout bubble (star-burst shape)
+    void rebuildShout(float w, float h);
+
+    //-------------------------------------------------------------------------
+    // TEXT LAYOUT - Modify to change text positioning and wrapping
+    //-------------------------------------------------------------------------
+
+    // Center text within bubble (with style-specific offsets)
+    void centerText();
+
+    // Wrap text to fit 80% of bubble width
+    void wrapText();
+
+    //-------------------------------------------------------------------------
+    // IMAGE LOADING - For image-based bubbles
+    //-------------------------------------------------------------------------
+
+    // Load and setup bubble background image
+    void loadBubbleImage(const std::string& imagePath);
+
+    //-------------------------------------------------------------------------
+    // MEMBER VARIABLES
+    //-------------------------------------------------------------------------
+
+    sf::ConvexShape m_shape;              // Procedural bubble shape
+    sf::Text m_text;                      // Text object for display
+    std::string text_;                    // Current text content
+    int fontSize_ = 24;                   // Current font size
+    std::string fontName_ = "actionman";  // Current font asset name
+    std::string style_ = "speech";        // Current bubble style
+    bool useImageBubble_ = false;         // True if using image instead of shape
+    std::string bubbleImagePath_;         // Asset key for bubble image
+    std::optional<sf::Sprite> m_bubbleSprite; // Sprite for image-based bubble
 };

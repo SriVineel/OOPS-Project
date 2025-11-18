@@ -1,7 +1,21 @@
+//=============================================================================
 // Character.h
-// Purpose: A simple character entity placed on the canvas.
-// - Inherits geometry and input helpers from CanvasObject.
-// - Adds presentation details: imagePath (texture source), expression (semantic state), flip flag.
+//=============================================================================
+// PURPOSE:
+//   In-scene character sprite that can be placed, moved, and resized.
+//   Derives from CanvasObject for integration with canvas management system.
+//
+// KEY FEATURES:
+//   - Position and size management via CanvasObject interface
+//   - Flip support (flip X for left/right facing)
+//   - Click detection for user interaction
+//   - SFML sprite wrapping with texture reference
+//
+// WHERE TO MODIFY:
+//   - Add animation: Store animation state and frame index
+//   - Add properties: Extend with health, name, or other attributes
+//   - Customize rendering: Modify draw() to add overlays or effects
+//=============================================================================
 
 #pragma once
 
