@@ -12,8 +12,8 @@ Comic Strip Maker is a C++/SFML editor for composing comic panels with character
 - **Speech bubbles:** Procedural and image-based speech/thought/shout bubbles with word-wrapping and font size control.
 - **Draw mode:** Freehand brush strokes with interpolation to avoid dotted lines at high mouse speed.
 - **Erase:** Instantly erase any brush stroke, character, or bubble by switching to Erase mode and clicking/tapping on an object. Every erase is undoable.
-- **Flip objects:** Flip any character, bubble, or stroke horizontally from the context menu or toolbar. Flips are undoable.
-- **Export images:** Save your entire comic panel as a PNG image with one click.
+- **Flip objects:** Flip any character, bubble, or stroke horizontally from the context menu or toolbar.
+- **Export images:** Save your entire comic panel without all the UI elements as a PNG image with one click .
 - **Undo/Redo:** All add, erase, flip and other actions are undoable and redoable (command pattern implementation).
 
 ---
@@ -29,28 +29,6 @@ Comic Strip Maker is a C++/SFML editor for composing comic panels with character
 - `CanvasObject.*`, `VectorUtils.h` — Shared geometry/math utilities, base class for drawable/interactive objects.
 - `Assets/` — Folders for all character, font, and speech bubble images.
 
----
-
-## How the New Features Work
-
-### Erase Mode
-
-- Activate the **Erase** tool from the sidebar or toolbar.
-- Click any brush stroke, speech bubble, or character to immediately remove it.
-- All erase actions are recorded in the Undo/Redo stack.
-
-### Export Images
-
-- Use the **Export** or **Save as Image** button in the toolbar.
-- The current comic panel or canvas is saved as a PNG file in your working directory (or a location you specify).
-
-### Flip Objects
-
-- Select any object (character, bubble, or stroke) and choose **Flip** from the context menu or via the Flip tool.
-- The object is mirrored horizontally in place.
-- Flips are also undoable/redone with Undo/Redo.
-
----
 
 ## Build (Windows, MSYS2 / mingw/ucrt64)
 
