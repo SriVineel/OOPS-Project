@@ -1,57 +1,107 @@
 # Comic Strip Maker (OOPS Project)
 
-Short description
-- Comic Strip Maker is a small C++/SFML editor for composing comic panels with characters, speech/thought bubbles, and freehand brush strokes. It provides a sidebar palette for assets, a color wheel and thickness slider for drawing, and an undo/redo system.
+## Short Description
 
-Key features
-- Palette: characters, fonts, and bubble styles.
-- Speech bubbles: procedural shapes and optional image-based bubbles, with word-wrapping and font controls.
-- Draw mode: freehand brush strokes with interpolation to avoid dotted lines at high mouse speed.
-- Undo/Redo: command pattern implemented to support undoable actions (add/delete/change).
+Comic Strip Maker is a C++/SFML editor for composing comic panels with characters, speech/thought bubbles, and freehand brush strokes. The editor features a sidebar palette, color wheel and thickness slider for drawing, undo/redo, erasing objects, image export, and flipping any object horizontally.
 
-Repository layout (important files)
-- `main.cpp` — application entry point, UI, event loop, and layout logic.
-- `AssetManager.*` — loads textures and fonts from `Assets/`.
-- `BrushStroke.*` — freehand stroke representation and drawing.
-- `SpeechBubble.*` — bubble geometry, text wrapping, and rendering.
-- `Character.*` — sprite-based characters.
-- `Command.*` — undo/redo command implementations and `CommandManager`.
-- `CanvasObject.*`, `VectorUtils.h` — shared geometry utilities.
-- `Assets/` — bundled assets (characters, fonts, speech bubble images).
+---
 
-Build (Windows, MSYS2 / mingw/ucrt64)
-1. Ensure SFML 3.0.2 is downloaded and the include/lib paths are available.
-2. From PowerShell (example):
+## Key Features
 
-```powershell
-# from project root
-C:/msys64/ucrt64/bin/g++.exe -std=c++17 -Wall -Wextra -Wpedantic \
-  main.cpp Character.cpp AssetManager.cpp SpeechBubble.cpp Command.cpp CanvasObject.cpp BrushStroke.cpp \
-  -I "C:/Users/SRI VINEEL/Downloads/Source/SFML-3.0.2/include" \
-  -L "C:/Users/SRI VINEEL/Downloads/Source/SFML-3.0.2/lib" \
-  -lsfml-graphics -lsfml-window -lsfml-system -o ComicStripMaker.exe
+- **Palette:** Side panel for choosing characters, fonts, and bubble styles.
+- **Speech bubbles:** Procedural and image-based speech/thought/shout bubbles with word-wrapping and font size control.
+- **Draw mode:** Freehand brush strokes with interpolation to avoid dotted lines at high mouse speed.
+- **Erase:** Instantly erase any brush stroke, character, or bubble by switching to Erase mode and clicking/tapping on an object. Every erase is undoable.
+- **Flip objects:** Flip any character, bubble, or stroke horizontally from the context menu or toolbar. Flips are undoable.
+- **Export images:** Save your entire comic panel as a PNG image with one click.
+- **Undo/Redo:** All add, erase, flip and other actions are undoable and redoable (command pattern implementation).
 
-# Run
-.\ComicStripMaker.exe
-```
+---
 
-Note: This repository includes a VSCode task named `Build Comic Strip Maker` that runs the same command.
+## Repository Layout (Important Files)
 
-Running and testing
-- Launch `ComicStripMaker.exe` from the workspace root.
-- Use the left sidebar to add characters/bubbles, switch to `Fonts` to use the text-size slider, and toggle `Draw Mode` to paint on the canvas.
+- `main.cpp` — Application entry point, UI, event loop, and layout logic. Handles Erase, Export, and Flip actions.
+- `AssetManager.*` — Loads textures and fonts from `Assets/`.
+- `BrushStroke.*` — Freehand stroke representation and drawing, including erasing support.
+- `SpeechBubble.*` — Bubble geometry, text wrapping/rendering, flipping support.
+- `Character.*` — Sprite-based characters, supports horizontal flipping.
+- `Command.*` — Undo/redo command implementations and `CommandManager` (supports erase and flip actions).
+- `CanvasObject.*`, `VectorUtils.h` — Shared geometry/math utilities, base class for drawable/interactive objects.
+- `Assets/` — Folders for all character, font, and speech bubble images.
 
-Development notes
-- To add assets, place images and font files under `Assets/Characters`, `Assets/Font`, or `Assets/SpeechBubbles` and update `AssetManager` if more extensions are needed.
-- Top-of-file headers have been standardized; these changes are non-functional.
-- The `ChangeBubbleFontSizeCommand` records font-size changes as a single undoable action when the slider drag completes.
+---
 
-Contributing
-- Please open issues or PRs on the repository: https://github.com/SriVineel/OOPS-PROJect
+## How the New Features Work
 
-License
-- No license file is included in the repo. Add a `LICENSE` file if you want to apply an open-source license.
+### Erase Mode
 
-Contact
-- Repo owner: SriVineel
+- Activate the **Erase** tool from the sidebar or toolbar.
+- Click any brush stroke, speech bubble, or character to immediately remove it.
+- All erase actions are recorded in the Undo/Redo stack.
+
+### Export Images
+
+- Use the **Export** or **Save as Image** button in the toolbar.
+- The current comic panel or canvas is saved as a PNG file in your working directory (or a location you specify).
+
+### Flip Objects
+
+- Select any object (character, bubble, or stroke) and choose **Flip** from the context menu or via the Flip tool.
+- The object is mirrored horizontally in place.
+- Flips are also undoable/redone with Undo/Redo.
+
+---
+
+## Build (Windows, MSYS2 / mingw/ucrt64)
+
+1. Download SFML 3.0.2 and set your include/lib paths to its location.
+2. To build from PowerShell:
+    ```
+    # from project root:
+    C:/msys64/ucrt64/bin/g++.exe -std=c++17 -Wall -Wextra -Wpedantic ^
+      main.cpp Character.cpp AssetManager.cpp SpeechBubble.cpp Command.cpp CanvasObject.cpp BrushStroke.cpp ^
+      -I "C:/Users/SRI VINEEL/Downloads/Source/SFML-3.0.2/include" ^
+      -L "C:/Users/SRI VINEEL/Downloads/Source/SFML-3.0.2/lib" ^
+      -lsfml-graphics -lsfml-window -lsfml-system -o ComicStripMaker.exe
+
+    # Run:
+    .\\ComicStripMaker.exe
+    ```
+    > Or use the included VSCode task named `Build Comic Strip Maker`.
+
+---
+
+## Running and Testing
+
+- Launch `ComicStripMaker.exe` from the root folder.
+- Use the sidebar to place characters/bubbles, change fonts, and switch between Draw/Erase/Flip/Export tools.
+- Right-click to flip objects. Use Export to save your panel as an image.
+
+---
+
+## Development Notes
+
+- Place new assets in `Assets/Characters`, `Assets/Font`, or `Assets/SpeechBubbles` as needed.
+- All code modules feature standardized top-of-file headers and clear section comments.
+- Erase, Export Images, and Flip are fully integrated into command-based Undo/Redo.
+- Font-size changes in bubbles are atomic/undoable actions.
+- See source code and in-file documentation for more extensibility guidance.
+
+---
+
+## Contributing
+
+Open issues or PRs at: [https://github.com/SriVineel/OOPS-PROJect](https://github.com/SriVineel/OOPS-PROJect)
+
+---
+
+## License
+
+No license file is included. Please add a `LICENSE` file if you want to specify an open-source license.
+
+---
+
+## Contact
+
+Repo owner: SriVineel
 
