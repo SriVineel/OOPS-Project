@@ -6,20 +6,12 @@
 //   Manages the application loop, UI rendering, event handling, and scene management.
 //
 // KEY FEATURES:
+//   - [UPDATED] Flip Handle: Click the Cyan square on a selected object to flip it.
+//   - [UPDATED] Export Button: Restored to sidebar position above sliders.
 //   - Auto-discovery asset loading
-//   - Draw mode with brush thickness slider and color wheel picker
-//   - Undo/Redo system with keyboard shortcuts (Ctrl+Z / Ctrl+Y)
-//   - Interactive palette for selecting assets
-//   - Speech bubble text editing with automatic text wrapping
-//   - Text-size slider with hover animation and tooltip
-//   - Brush stroke interpolation for smooth continuous lines
-//
-// WHERE TO MODIFY:
-//   - Add new UI elements: Add to initialization and render loop
-//   - Change color wheel: Modify hsvToRgb() and color generation
-//   - Adjust brush behavior: Modify BrushStroke interpolation
-//   - Customize sidebar: Edit category headers, palette layout
-//   - Extend undo/redo: Add new Command subclasses
+//   - Draw mode & Eraser tools
+//   - Undo/Redo system
+//   - Interactive palette
 //=============================================================================
 
 #include <SFML/Graphics.hpp>
@@ -32,6 +24,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <ctime>
+#include <filesystem>
 
 #include "AssetManager.h"
 #include "SpeechBubble.h"
@@ -39,6 +33,10 @@
 #include "Character.h"
 #include "BrushStroke.h"
 #include "Command.h"
+
+// ----------------------------------------------------------------------------
+// Enums and Structures
+// ----------------------------------------------------------------------------
 
 enum class Category
 {
@@ -67,6 +65,10 @@ enum class PickKind
     Bubble
 };
 
+// ----------------------------------------------------------------------------
+// Helper Functions
+// ----------------------------------------------------------------------------
+
 // Simple HSV -> RGB helper for the color wheel (h,s,v in [0,1])
 static sf::Color hsvToRgb(float h, float s, float v)
 {
@@ -80,36 +82,12 @@ static sf::Color hsvToRgb(float h, float s, float v)
 
     switch (ii)
     {
-    case 0:
-        r = v;
-        g = t;
-        b = p;
-        break;
-    case 1:
-        r = q;
-        g = v;
-        b = p;
-        break;
-    case 2:
-        r = p;
-        g = v;
-        b = t;
-        break;
-    case 3:
-        r = p;
-        g = q;
-        b = v;
-        break;
-    case 4:
-        r = t;
-        g = p;
-        b = v;
-        break;
-    case 5:
-        r = v;
-        g = p;
-        b = q;
-        break;
+    case 0: r = v; g = t; b = p; break;
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    case 5: r = v; g = p; b = q; break;
     }
 
     return sf::Color(
@@ -117,6 +95,10 @@ static sf::Color hsvToRgb(float h, float s, float v)
         static_cast<std::uint8_t>(g * 255.f),
         static_cast<std::uint8_t>(b * 255.f));
 }
+
+// ----------------------------------------------------------------------------
+// Main Application Entry
+// ----------------------------------------------------------------------------
 
 int main()
 {
@@ -133,7 +115,7 @@ int main()
         AM.autoLoadFonts("assets/Font");
         AM.autoLoadBubbles("assets/SpeechBubbles");
 
-        std::cout << "\n[Main] \xE2\x9C\x93 All assets loaded successfully!\n";
+        std::cout << "\n[Main] All assets loaded successfully!\n";
         std::cout << "====================================\n\n";
     }
     catch (const std::exception &e)
@@ -152,7 +134,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        sf::String("Comic Strip Maker - Phase 2"));
+        sf::String("Comic Strip Maker - Final"));
     window.setFramerateLimit(60);
 
     int windowX = static_cast<int>((screenWidth - windowWidth) / 2);
@@ -162,7 +144,6 @@ int main()
     const float SidebarW = 200.f;
 
     sf::RectangleShape sidebarBg(sf::Vector2f{SidebarW, static_cast<float>(windowHeight)});
-    // Use a white sidebar area as requested
     sidebarBg.setFillColor(sf::Color::White);
     sidebarBg.setOutlineColor(sf::Color(200, 200, 200));
     sidebarBg.setOutlineThickness(1.f);
@@ -177,45 +158,71 @@ int main()
         {Category::Bubbles, sf::FloatRect{{0.f, 2.f * headerH}, {SidebarW, headerH}}}};
     Category currentCategory = Category::Characters;
 
-    // 4) UI Buttons
+    // 4) UI Buttons Initialization
     auto &AM = AssetManager::getInstance();
 
-    // Draw Mode Button
-    sf::RectangleShape drawButton(sf::Vector2f{SidebarW - 20.f, 40.f});
-    drawButton.setPosition({10.f, static_cast<float>(windowHeight) - 50.f});
+    // Shared dimensions for split buttons
+    float buttonWidth = (SidebarW - 30.f) / 2.f;
+
+    // --- Draw Mode Button (Left Bottom) ---
+    sf::RectangleShape drawButton(sf::Vector2f{buttonWidth, 40.f});
     drawButton.setFillColor(sf::Color(200, 200, 200));
     drawButton.setOutlineColor(sf::Color(150, 150, 150));
     drawButton.setOutlineThickness(2.f);
 
     sf::Text drawButtonText(AM.getFont("actionman"));
-    drawButtonText.setString("Draw Mode");
+    drawButtonText.setString("Draw");
     drawButtonText.setCharacterSize(16);
     drawButtonText.setFillColor(sf::Color::Black);
 
-    // Undo/Redo Buttons
-    float buttonWidth = (SidebarW - 30.f) / 2.f;
+    // --- Eraser Button (Right Bottom) ---
+    sf::RectangleShape eraserButton(sf::Vector2f{buttonWidth, 40.f});
+    eraserButton.setFillColor(sf::Color(200, 200, 200));
+    eraserButton.setOutlineColor(sf::Color(150, 150, 150));
+    eraserButton.setOutlineThickness(2.f);
 
+    sf::Text eraserButtonText(AM.getFont("actionman"));
+    eraserButtonText.setString("Eraser");
+    eraserButtonText.setCharacterSize(16);
+    eraserButtonText.setFillColor(sf::Color::Black);
+
+    // --- Undo/Redo Buttons (Above Draw/Eraser) ---
     sf::RectangleShape undoButton(sf::Vector2f{buttonWidth, 40.f});
-    undoButton.setPosition({10.f, static_cast<float>(windowHeight) - 100.f});
     undoButton.setFillColor(sf::Color(200, 200, 200));
     undoButton.setOutlineColor(sf::Color(150, 150, 150));
     undoButton.setOutlineThickness(2.f);
-
-    sf::RectangleShape redoButton(sf::Vector2f{buttonWidth, 40.f});
-    redoButton.setPosition({15.f + buttonWidth, static_cast<float>(windowHeight) - 100.f});
-    redoButton.setFillColor(sf::Color(200, 200, 200));
-    redoButton.setOutlineColor(sf::Color(150, 150, 150));
-    redoButton.setOutlineThickness(2.f);
 
     sf::Text undoButtonText(AM.getFont("actionman"));
     undoButtonText.setString("Undo");
     undoButtonText.setCharacterSize(16);
     undoButtonText.setFillColor(sf::Color::Black);
 
+    sf::RectangleShape redoButton(sf::Vector2f{buttonWidth, 40.f});
+    redoButton.setFillColor(sf::Color(200, 200, 200));
+    redoButton.setOutlineColor(sf::Color(150, 150, 150));
+    redoButton.setOutlineThickness(2.f);
+
     sf::Text redoButtonText(AM.getFont("actionman"));
     redoButtonText.setString("Redo");
     redoButtonText.setCharacterSize(16);
     redoButtonText.setFillColor(sf::Color::Black);
+
+    // --- Export Button (Above Thickness) ---
+    sf::RectangleShape exportButton(sf::Vector2f{SidebarW - 20.f, 40.f});
+    exportButton.setFillColor(sf::Color(200, 200, 200));
+    exportButton.setOutlineColor(sf::Color(150, 150, 150));
+    exportButton.setOutlineThickness(2.f);
+
+    sf::Text exportButtonText(AM.getFont("actionman"));
+    exportButtonText.setString("Export Image");
+    exportButtonText.setCharacterSize(16);
+    exportButtonText.setFillColor(sf::Color::Black);
+
+    // State Flags
+    bool saveNextFrame = false;
+    bool isExportHovered = false;
+    bool isEraserHovered = false;
+    bool eraserActive = false;
 
     // 5) Command Manager
     CommandManager commandManager;
@@ -225,7 +232,7 @@ int main()
     std::vector<std::unique_ptr<SpeechBubble>> bubbles;
     std::vector<std::unique_ptr<BrushStroke>> strokes;
 
-    // 7) Palette rows
+    // 7) Palette Data
     std::vector<PaletteItem> palette;
 
     auto rebuildPalette = [&]()
@@ -268,7 +275,7 @@ int main()
 
     rebuildPalette();
 
-    // 8) Interaction state
+    // 8) Interaction state variables
     bool draggingSprite = false;
     int dragSpriteIdx = -1;
     bool draggingBubble = false;
@@ -290,7 +297,7 @@ int main()
     bool drawMode = false;
     BrushStroke *activeStroke = nullptr;
 
-    // New: Brush configuration state
+    // Brush configuration state
     sf::Color currentBrushColor = sf::Color::Black;
     float currentBrushThickness = 4.f;
     const float minBrushThickness = 1.f;
@@ -303,12 +310,12 @@ int main()
     const float minTextSize = 8.f;
     const float maxTextSize = 72.f;
     bool draggingTextSize = false;
-    sf::FloatRect fontSectionBounds;  // Store font section bounds for slider positioning
-    
+    sf::FloatRect fontSectionBounds;
+
     // Text size slider (only visible in font section)
     sf::RectangleShape textSizeBar(sf::Vector2f(SidebarW - 40.f, 4.f));
     textSizeBar.setFillColor(sf::Color(100, 100, 100));
-    textSizeBar.setPosition(sf::Vector2f(20.f, 200.f));  // Default position
+    textSizeBar.setPosition(sf::Vector2f(20.f, 200.f)); // Default position
 
     sf::CircleShape textSizeHandle(8.f);
     textSizeHandle.setFillColor(sf::Color(60, 60, 60));
@@ -334,7 +341,7 @@ int main()
     };
     updateTextSizeHandle();
 
-    // 9) Helpers
+    // 9) Geometry Helpers
     auto bubbleRect = [&](const SpeechBubble &b)
     {
         return sf::FloatRect(b.getPosition(), b.getSize());
@@ -345,11 +352,22 @@ int main()
         return sf::FloatRect(c.getPosition(), c.getSize());
     };
 
+    // Resize Handle (Bottom-Right)
     auto handleRect = [&](const sf::FloatRect &r)
     {
         const float h = 10.f;
         return sf::FloatRect(
             sf::Vector2f{r.position.x + r.size.x - h, r.position.y + r.size.y - h},
+            sf::Vector2f{h, h});
+    };
+
+    // [NEW] Flip Handle (Top-Right)
+    auto flipHandleRect = [&](const sf::FloatRect &r)
+    {
+        const float h = 10.f;
+        // Positioned at top-right corner
+        return sf::FloatRect(
+            sf::Vector2f{r.position.x + r.size.x - h, r.position.y},
             sf::Vector2f{h, h});
     };
 
@@ -364,7 +382,7 @@ int main()
     thicknessBar.setPosition(sf::Vector2f(
         20.f,
         static_cast<float>(windowHeight) - 140.f));
-    thicknessBar.setFillColor(sf::Color(100, 100, 100));  // Dark grey so it's visible on white
+    thicknessBar.setFillColor(sf::Color(100, 100, 100)); // Dark grey so it's visible on white
 
     sf::CircleShape thicknessHandle(8.f);
     thicknessHandle.setFillColor(sf::Color(60, 60, 60));
@@ -425,53 +443,104 @@ int main()
     }
 
     sf::Sprite colorWheelSprite(colorWheelTexture);
-    colorWheelSprite.setPosition(sf::Vector2f(
-        (SidebarW - static_cast<float>(wheelSize)) * 0.5f,
-        static_cast<float>(windowHeight) - 320.f));
+    // Position is set in updateLayout
 
-    // Layout update function: recompute UI positions when window is resized
-    auto updateLayout = [&]() {
+    // ------------------------------------------------------------------------
+    // Layout Update Function
+    // ------------------------------------------------------------------------
+    auto updateLayout = [&]()
+    {
         auto sz = window.getSize();
         windowWidth = sz.x;
         windowHeight = sz.y;
 
-        // Sidebar
+        // Sidebar background
         sidebarBg.setSize(sf::Vector2f{SidebarW, static_cast<float>(windowHeight)});
 
-        // Buttons and controls anchored to bottom of sidebar
+        // 1. Draw Mode Button (Left Bottom)
         drawButton.setPosition({10.f, static_cast<float>(windowHeight) - 50.f});
+        auto dbB = drawButton.getLocalBounds();
+        auto dbT = drawButtonText.getLocalBounds();
+        drawButtonText.setPosition({drawButton.getPosition().x + (dbB.size.x - dbT.size.x) / 2.f,
+                                    drawButton.getPosition().y + (dbB.size.y - dbT.size.y) / 2.f - 2.f});
 
-        float buttonWidth = (SidebarW - 30.f) / 2.f;
-        undoButton.setSize({buttonWidth, 40.f});
+        // 2. Eraser Button (Right Bottom)
+        eraserButton.setPosition({15.f + buttonWidth, static_cast<float>(windowHeight) - 50.f});
+        auto erB = eraserButton.getLocalBounds();
+        auto erT = eraserButtonText.getLocalBounds();
+        eraserButtonText.setPosition({eraserButton.getPosition().x + (erB.size.x - erT.size.x) / 2.f,
+                                      eraserButton.getPosition().y + (erB.size.y - erT.size.y) / 2.f - 2.f});
+
+        // 3. Undo/Redo Buttons (Above Draw/Eraser)
         undoButton.setPosition({10.f, static_cast<float>(windowHeight) - 100.f});
-        redoButton.setSize({buttonWidth, 40.f});
         redoButton.setPosition({15.f + buttonWidth, static_cast<float>(windowHeight) - 100.f});
 
-        // Thickness bar and handle
+        auto ubB = undoButton.getLocalBounds();
+        auto ubT = undoButtonText.getLocalBounds();
+        undoButtonText.setPosition({undoButton.getPosition().x + (ubB.size.x - ubT.size.x) / 2.f,
+                                    undoButton.getPosition().y + (ubB.size.y - ubT.size.y) / 2.f - 2.f});
+
+        auto rbB = redoButton.getLocalBounds();
+        auto rbT = redoButtonText.getLocalBounds();
+        redoButtonText.setPosition({redoButton.getPosition().x + (rbB.size.x - rbT.size.x) / 2.f,
+                                    redoButton.getPosition().y + (rbB.size.y - rbT.size.y) / 2.f - 2.f});
+
+        // 4. Thickness Slider (Above Undo/Redo)
         thicknessBar.setPosition(sf::Vector2f(20.f, static_cast<float>(windowHeight) - 140.f));
         updateThicknessHandle();
 
-        // Color wheel and preview
+        // 5. Export Button (Above Thickness Slider)
+        // Export is 40px high + spacing. Let's place it at H - 190.
+        exportButton.setPosition({10.f, static_cast<float>(windowHeight) - 390.f});
+        auto ebB = exportButton.getLocalBounds();
+        auto ebT = exportButtonText.getLocalBounds();
+        exportButtonText.setPosition({exportButton.getPosition().x + (ebB.size.x - ebT.size.x) / 2.f,
+                                      exportButton.getPosition().y + (ebB.size.y - ebT.size.y) / 2.f - 4.f});
+
+        // 6. Color Wheel (H - 320)
         colorWheelSprite.setPosition(sf::Vector2f((SidebarW - static_cast<float>(wheelSize)) * 0.5f,
-                                                 static_cast<float>(windowHeight) - 320.f));
+                                                  static_cast<float>(windowHeight) - 340.f));
     };
 
     // Initial layout
     updateLayout();
 
-    // 12) Main loop
+    // ------------------------------------------------------------------------
+    // Main Event Loop
+    // ------------------------------------------------------------------------
     while (window.isOpen())
     {
+        // Update mouse pos
+        sf::Vector2f mpos = mousePositionF(window);
+
+        // Check hover states
+        if (exportButton.getGlobalBounds().contains(mpos))
+        {
+            isExportHovered = true;
+        }
+        else
+        {
+            isExportHovered = false;
+        }
+
+        if (eraserButton.getGlobalBounds().contains(mpos))
+        {
+            isEraserHovered = true;
+        }
+        else
+        {
+            isEraserHovered = false;
+        }
+
         for (auto evt = window.pollEvent(); evt; evt = window.pollEvent())
         {
-            // Close
+            // System Events
             if (evt->is<sf::Event::Closed>())
             {
                 window.close();
                 continue;
             }
 
-            // Window resized: update layout and internal view
             if (evt->is<sf::Event::Resized>())
             {
                 // update SFML view to new size to avoid stretching
@@ -483,7 +552,7 @@ int main()
                 continue;
             }
 
-            // Keyboard events
+            // Keyboard Shortcuts
             if (evt->is<sf::Event::KeyPressed>())
             {
                 const auto *kp = evt->getIf<sf::Event::KeyPressed>();
@@ -509,7 +578,7 @@ int main()
                     activeBubble = nullptr;
                 }
 
-                // Backspace in active bubble
+                // Backspace text in active bubble
                 if (activeBubble && key == sf::Keyboard::Key::Backspace)
                 {
                     auto t = activeBubble->getText();
@@ -545,7 +614,7 @@ int main()
                 continue;
             }
 
-            // Text input for speech bubble
+            // Text Input
             if (evt->is<sf::Event::TextEntered>())
             {
                 if (activeBubble)
@@ -570,21 +639,23 @@ int main()
                 continue;
             }
 
-            // Mouse button pressed
+            // Mouse Button Pressed
             if (evt->is<sf::Event::MouseButtonPressed>())
             {
                 const auto *mb = evt->getIf<sf::Event::MouseButtonPressed>();
                 if (!mb)
                     continue;
 
-                sf::Vector2f mpos = mousePositionF(window);
+                mpos = mousePositionF(window);
 
                 if (mb->button == sf::Mouse::Button::Left)
                 {
-                    // If click is inside sidebar
+                    // ========================================================
+                    // SIDEBAR CLICK HANDLING
+                    // ========================================================
                     if (mpos.x <= SidebarW)
                     {
-                        // Thickness bar
+                        // 1. Thickness bar
                         if (thicknessBar.getGlobalBounds().contains(mpos))
                         {
                             draggingThickness = true;
@@ -598,36 +669,55 @@ int main()
                             continue;
                         }
 
-                                // Text size slider (inside palette area) - only active when Fonts category is selected
-                                if (currentCategory == Category::Fonts && textSizeBar.getGlobalBounds().contains(mpos))
-                                {
-                                    // Start dragging the slider even if no bubble is selected so
-                                    // the user can set a global/currentTextSize. If a bubble
-                                    // was selected at press, record its old size so we can
-                                    // create a single undoable command on release.
-                                    draggingTextSize = true;
-                                    textSizeOld = activeBubble ? activeBubble->getFontSize() : -1;
+                        // 2. Export Button
+                        if (exportButton.getGlobalBounds().contains(mpos))
+                        {
+                            saveNextFrame = true; // Trigger save on next render
+                            std::cout << "[Export] Snapshot requested..." << std::endl;
+                            continue;
+                        }
 
-                                    float x0 = textSizeBar.getPosition().x;
-                                    float x1 = x0 + textSizeBar.getSize().x;
-                                    float t = (mpos.x - x0) / (x1 - x0);
-                                    t = std::clamp(t, 0.f, 1.f);
-                                    currentTextSize = minTextSize + t * (maxTextSize - minTextSize);
-                                    updateTextSizeHandle();
+                        // 3. Eraser Button
+                        if (eraserButton.getGlobalBounds().contains(mpos))
+                        {
+                            eraserActive = !eraserActive;
+                            if (eraserActive)
+                            {
+                                drawMode = true; // Automatically enable draw mode
+                                auto cursor = sf::Cursor::createFromSystem(sf::Cursor::Type::Cross);
+                                if (cursor)
+                                    window.setMouseCursor(*cursor);
+                            }
+                            std::cout << "[Eraser] " << (eraserActive ? "ON" : "OFF") << std::endl;
+                            continue;
+                        }
 
-                                    // Apply live update if a bubble is selected
-                                    if (activeBubble)
-                                    {
-                                        activeBubble->setFontSize(static_cast<int>(currentTextSize));
-                                    }
+                        // 4. Text size slider
+                        if (currentCategory == Category::Fonts && textSizeBar.getGlobalBounds().contains(mpos))
+                        {
+                            draggingTextSize = true;
+                            textSizeOld = activeBubble ? activeBubble->getFontSize() : -1;
 
-                                    continue;
-                                }
+                            float x0 = textSizeBar.getPosition().x;
+                            float x1 = x0 + textSizeBar.getSize().x;
+                            float t = (mpos.x - x0) / (x1 - x0);
+                            t = std::clamp(t, 0.f, 1.f);
+                            currentTextSize = minTextSize + t * (maxTextSize - minTextSize);
+                            updateTextSizeHandle();
 
-                        // Color wheel
+                            if (activeBubble)
+                            {
+                                activeBubble->setFontSize(static_cast<int>(currentTextSize));
+                            }
+
+                            continue;
+                        }
+
+                        // 5. Color wheel
                         if (colorWheelSprite.getGlobalBounds().contains(mpos))
                         {
                             pickingColor = true;
+                            eraserActive = false; // Picking a color disables eraser
                             sf::Vector2f local = mpos - colorWheelSprite.getPosition();
                             int px = static_cast<int>(local.x);
                             int py = static_cast<int>(local.y);
@@ -645,10 +735,14 @@ int main()
                             continue;
                         }
 
-                        // Draw button
+                        // 6. Draw button
                         if (drawButton.getGlobalBounds().contains(mpos))
                         {
                             drawMode = !drawMode;
+                            if (!drawMode)
+                            {
+                                eraserActive = false; // Disable eraser if turning off draw mode
+                            }
                             activeStroke = nullptr;
 
                             if (drawMode)
@@ -676,7 +770,7 @@ int main()
                             continue;
                         }
 
-                        // Undo button
+                        // 7. Undo button
                         if (undoButton.getGlobalBounds().contains(mpos))
                         {
                             commandManager.undo();
@@ -686,7 +780,7 @@ int main()
                             continue;
                         }
 
-                        // Redo button
+                        // 8. Redo button
                         if (redoButton.getGlobalBounds().contains(mpos))
                         {
                             commandManager.redo();
@@ -696,7 +790,7 @@ int main()
                             continue;
                         }
 
-                        // Category headers
+                        // 9. Category headers
                         bool headerHit = false;
                         for (const auto &h : headers)
                         {
@@ -714,7 +808,7 @@ int main()
                         if (headerHit)
                             continue;
 
-                        // Palette items
+                        // 10. Palette items
                         for (const auto &item : palette)
                         {
                             if (!item.hit.contains(mpos))
@@ -773,7 +867,9 @@ int main()
                         continue; // sidebar handled
                     }
 
-                    // Canvas area
+                    // ========================================================
+                    // CANVAS CLICK HANDLING
+                    // ========================================================
                     if (mpos.x > SidebarW)
                     {
                     }
@@ -781,9 +877,12 @@ int main()
                     if (drawMode && mpos.x > SidebarW)
                     {
                         // Start new stroke
+                        // Use White if Eraser is active, else use selected color
+                        sf::Color brushColor = eraserActive ? sf::Color::White : currentBrushColor;
+
                         std::string id = "stroke_" + std::to_string(strokes.size() + 1);
                         auto stroke = std::make_unique<BrushStroke>(
-                            id, currentBrushColor, currentBrushThickness);
+                            id, brushColor, currentBrushThickness);
                         activeStroke = stroke.get();
                         activeStroke->beginAt(mpos);
 
@@ -798,6 +897,34 @@ int main()
                     activeBubble = nullptr;
 
                     bool hit = false;
+
+                    // [NEW] CHECK FLIP HANDLE CLICK (Top-Right)
+                    for (int i = static_cast<int>(bubbles.size()) - 1; i >= 0 && !hit; --i)
+                    {
+                        if (flipHandleRect(bubbleRect(*bubbles[i])).contains(mpos))
+                        {
+                            bubbles[i]->setFlipped(!bubbles[i]->isFlipped());
+                            picked = PickKind::Bubble;
+                            pickedIndex = i;
+                            activeBubble = bubbles[i].get();
+                            hit = true;
+                        }
+                    }
+                    if (!hit)
+                    {
+                        for (int i = static_cast<int>(characters.size()) - 1; i >= 0 && !hit; --i)
+                        {
+                            if (flipHandleRect(characterRect(*characters[i])).contains(mpos))
+                            {
+                                characters[i]->setFlipped(!characters[i]->isFlipped());
+                                picked = PickKind::Sprite;
+                                pickedIndex = i;
+                                hit = true;
+                            }
+                        }
+                    }
+                    if (hit)
+                        continue;
 
                     // Resize handles for bubbles
                     for (int i = static_cast<int>(bubbles.size()) - 1; i >= 0 && !hit; --i)
@@ -883,9 +1010,7 @@ int main()
                 draggingThickness = false;
                 pickingColor = false;
 
-                // If we were dragging the text-size slider, commit a single
-                // undoable command for the change (if a bubble was selected
-                // when the drag started and the size actually changed).
+                // If we were dragging the text-size slider
                 if (draggingTextSize)
                 {
                     int newSize = static_cast<int>(currentTextSize);
@@ -939,7 +1064,7 @@ int main()
                     t = std::clamp(t, 0.f, 1.f);
                     currentTextSize = minTextSize + t * (maxTextSize - minTextSize);
                     updateTextSizeHandle();
-                    
+
                     int newSize = static_cast<int>(currentTextSize);
                     activeBubble->setFontSize(newSize);
                 }
@@ -949,9 +1074,9 @@ int main()
                 {
                     sf::Vector2f handlePos = textSizeHandle.getPosition();
                     float dist = std::sqrt((mpos.x - handlePos.x) * (mpos.x - handlePos.x) +
-                                          (mpos.y - handlePos.y) * (mpos.y - handlePos.y));
-                    float hoverRadius = 16.f;  // Hover detection radius
-                    
+                                           (mpos.y - handlePos.y) * (mpos.y - handlePos.y));
+                    float hoverRadius = 16.f; // Hover detection radius
+
                     if (dist < hoverRadius && mpos.x <= SidebarW)
                     {
                         if (!hoverTextSizeSlider)
@@ -967,7 +1092,7 @@ int main()
                 }
                 else if (draggingTextSize)
                 {
-                    hoverTextSizeSlider = true;  // Keep hover true while dragging
+                    hoverTextSizeSlider = true; // Keep hover true while dragging
                 }
                 else
                 {
@@ -1037,11 +1162,82 @@ int main()
             }
         }
 
-        // 13) Render
+        // --------------------------------------------------------------------
+        // RENDER LOOP
+        // --------------------------------------------------------------------
         window.clear(sf::Color::White);
+
+        // 1. Draw Scene Objects
+        for (const auto &s : strokes)
+        {
+            s->draw(window);
+        }
+        for (const auto &c : characters)
+        {
+            c->draw(window);
+        }
+        for (const auto &b : bubbles)
+        {
+            b->draw(window);
+        }
+
+        // 2. Handle Export (Capture Scene Only)
+        if (saveNextFrame)
+        {
+            sf::Texture texture;
+            if (texture.resize(window.getSize())) // Check return for nodiscard
+            {
+                texture.update(window);
+                sf::Image screenshot = texture.copyToImage();
+
+                // Crop out the sidebar (Start from SidebarW)
+                unsigned int cropX = static_cast<unsigned int>(SidebarW);
+                unsigned int cropW = window.getSize().x - cropX;
+                unsigned int cropH = window.getSize().y;
+
+                // Define output folder
+                namespace fs = std::filesystem;
+                std::string exportDir = "SavedComics";
+
+                // Create directory if it doesn't exist
+                if (!fs::exists(exportDir))
+                {
+                    fs::create_directory(exportDir);
+                }
+
+                if (cropW > 0 && cropH > 0)
+                {
+                    sf::Image finalImage;
+                    // SFML 3: resize takes Vector2u, returns void
+                    finalImage.resize(sf::Vector2u(cropW, cropH));
+
+                    // SFML 3: copy takes Vector2u for dest, IntRect for source
+                    if (finalImage.copy(
+                            screenshot,
+                            sf::Vector2u(0, 0),
+                            sf::IntRect(sf::Vector2i(static_cast<int>(cropX), 0),
+                                        sf::Vector2i(static_cast<int>(cropW), static_cast<int>(cropH)))))
+                    {
+                        std::string filename = exportDir + "/Comic_" + std::to_string(std::time(nullptr)) + ".png";
+
+                        if (finalImage.saveToFile(filename))
+                        {
+                            std::cout << "[Export] Success! Saved to: " << filename << std::endl;
+                        }
+                        else
+                        {
+                            std::cerr << "[Export] Failed to save image." << std::endl;
+                        }
+                    }
+                }
+            }
+            saveNextFrame = false;
+        }
+
+        // 3. Draw UI Layer (Sidebar Background)
         window.draw(sidebarBg);
 
-        // Headers
+        // 4. Draw Headers
         for (const auto &h : headers)
         {
             sf::RectangleShape rect;
@@ -1067,7 +1263,7 @@ int main()
             window.draw(label);
         }
 
-        // Palette rows
+        // 5. Draw Palette Items
         for (const auto &row : palette)
         {
             sf::RectangleShape r;
@@ -1124,13 +1320,13 @@ int main()
                 t.setPosition({boxTL.x,
                                boxTL.y + 0.5f * (boxSize.y - bounds.size.y)});
                 window.draw(t);
-                
+
                 // Store font section bounds for slider positioning below all fonts
                 fontSectionBounds = row.hit;
             }
         }
 
-        // Text size slider - render once below all fonts (only when Fonts category is active)
+        // 6. Text Size Slider (Conditional)
         if (currentCategory == Category::Fonts && fontSectionBounds.size.y > 0)
         {
             textSizeBar.setPosition(sf::Vector2f(20.f, fontSectionBounds.position.y + fontSectionBounds.size.y + 10.f));
@@ -1140,8 +1336,8 @@ int main()
             // Update handle scale with smooth animation on hover/drag
             if (hoverTextSizeSlider || draggingTextSize)
             {
-                float targetScale = 1.35f;  // Scale up on hover/drag
-                handleScale += (targetScale - handleScale) * 0.15f;  // Smooth easing
+                float targetScale = 1.35f;                          // Scale up on hover/drag
+                handleScale += (targetScale - handleScale) * 0.15f; // Smooth easing
             }
             else
             {
@@ -1152,7 +1348,7 @@ int main()
             // Draw handle with animation scale and highlight when active
             sf::CircleShape animatedHandle = textSizeHandle;
             animatedHandle.setScale(sf::Vector2f(handleScale, handleScale));
-            
+
             if (draggingTextSize)
             {
                 animatedHandle.setFillColor(sf::Color(40, 160, 240));
@@ -1204,7 +1400,7 @@ int main()
             window.draw(sizeLabel);
         }
 
-        // Color wheel + current color preview
+        // 7. Color Wheel & Preview
         window.draw(colorWheelSprite);
 
         sf::RectangleShape colorPreview(sf::Vector2f(24.f, 24.f));
@@ -1212,17 +1408,55 @@ int main()
         colorPreview.setOutlineColor(sf::Color::Black);
         colorPreview.setOutlineThickness(1.f);
         // Position at the leftmost edge of sidebar and horizontally aligned with center of color wheel
-        float wheelCenterY = static_cast<float>(windowHeight) - 320.f + static_cast<float>(wheelSize) * 0.5f;
+        float wheelCenterY = static_cast<float>(windowHeight) - 340.f + static_cast<float>(wheelSize) * 0.5f;
         colorPreview.setPosition(sf::Vector2f(
-            0.f,
-            wheelCenterY - 12.f));
+            160.f,
+            wheelCenterY + 50.f));
         window.draw(colorPreview);
 
-        // Thickness slider
+        // 8. Thickness Slider
         window.draw(thicknessBar);
         window.draw(thicknessHandle);
 
-        // Undo/Redo buttons
+        // 9. Draw Button
+        if (drawMode)
+        {
+            drawButton.setFillColor(sf::Color(120, 220, 120));
+        }
+        else
+        {
+            drawButton.setFillColor(sf::Color(200, 200, 200));
+        }
+        window.draw(drawButton);
+        auto drawTextBounds = drawButtonText.getLocalBounds();
+        drawButtonText.setPosition({drawButton.getPosition().x +
+                                        (drawButton.getSize().x - drawTextBounds.size.x) / 2.f,
+                                    drawButton.getPosition().y +
+                                        (drawButton.getSize().y - drawTextBounds.size.y) / 2.f - 2.f});
+        window.draw(drawButtonText);
+
+        // 10. Eraser Button (Right of Draw)
+        if (eraserActive)
+        {
+            eraserButton.setFillColor(sf::Color(120, 220, 120));
+        }
+        else if (isEraserHovered)
+        {
+            eraserButton.setFillColor(sf::Color(220, 220, 220));
+        }
+        else
+        {
+            eraserButton.setFillColor(sf::Color(200, 200, 200));
+        }
+        window.draw(eraserButton);
+        auto eraserTextBounds = eraserButtonText.getLocalBounds();
+        eraserButtonText.setPosition({eraserButton.getPosition().x +
+                                          (eraserButton.getSize().x - eraserTextBounds.size.x) / 2.f,
+                                      eraserButton.getPosition().y +
+                                          (eraserButton.getSize().y - eraserTextBounds.size.y) / 2.f - 2.f});
+        window.draw(eraserButtonText);
+
+        // 11. Undo/Redo buttons
         undoButton.setFillColor(
             commandManager.canUndo() ? sf::Color(200, 200, 200)
                                      : sf::Color(150, 150, 150));
@@ -1247,37 +1481,48 @@ int main()
                                         (redoButton.getSize().y - redoTextBounds.size.y) / 2.f - 2.f});
         window.draw(redoButtonText);
 
-        // Draw button
-        window.draw(drawButton);
-        auto drawTextBounds = drawButtonText.getLocalBounds();
-        drawButtonText.setPosition({drawButton.getPosition().x +
-                                        (drawButton.getSize().x - drawTextBounds.size.x) / 2.f,
-                                    drawButton.getPosition().y +
-                                        (drawButton.getSize().y - drawTextBounds.size.y) / 2.f - 2.f});
-        window.draw(drawButtonText);
-
-        // Scene objects
-        for (const auto &s : strokes)
+        // 12. Export Button (Restored to position above thickness slider)
+        if (saveNextFrame)
         {
-            s->draw(window);
+            exportButton.setFillColor(sf::Color(120, 220, 120)); // Green
         }
-        for (const auto &c : characters)
+        else if (isExportHovered)
         {
-            c->draw(window);
+            exportButton.setFillColor(sf::Color(220, 220, 220));
         }
-        for (const auto &b : bubbles)
+        else
         {
-            b->draw(window);
+            exportButton.setFillColor(sf::Color(200, 200, 200));
         }
 
-        // Resize handles for selected object
-        auto drawHandle = [&](const sf::FloatRect &r)
+        window.draw(exportButton);
+        auto exportTextBounds = exportButtonText.getLocalBounds();
+        exportButtonText.setPosition({exportButton.getPosition().x +
+                                          (exportButton.getSize().x - exportTextBounds.size.x) / 2.f,
+                                      exportButton.getPosition().y +
+                                          (exportButton.getSize().y - exportTextBounds.size.y) / 2.f - 4.f});
+        window.draw(exportButtonText);
+
+        // 13. Draw Handles (Resize and Flip)
+        // Resize Handle (Bottom-Right)
+        auto drawResizeHandle = [&](const sf::FloatRect &r)
         {
             auto hr = handleRect(r);
             sf::RectangleShape h;
             h.setPosition(hr.position);
             h.setSize(hr.size);
-            h.setFillColor(sf::Color(60, 60, 60));
+            h.setFillColor(sf::Color(60, 60, 60)); // Dark Grey
+            window.draw(h);
+        };
+
+        // Flip Handle (Top-Right)
+        auto drawFlipHandle = [&](const sf::FloatRect &r)
+        {
+            auto hr = flipHandleRect(r);
+            sf::RectangleShape h;
+            h.setPosition(hr.position);
+            h.setSize(hr.size);
+            h.setFillColor(sf::Color(0, 200, 255)); // Cyan color for flip
             window.draw(h);
         };
 
@@ -1285,13 +1530,17 @@ int main()
             pickedIndex >= 0 &&
             pickedIndex < static_cast<int>(characters.size()))
         {
-            drawHandle(characterRect(*characters[pickedIndex]));
+            sf::FloatRect r = characterRect(*characters[pickedIndex]);
+            drawResizeHandle(r);
+            drawFlipHandle(r);
         }
         else if (picked == PickKind::Bubble &&
                  pickedIndex >= 0 &&
                  pickedIndex < static_cast<int>(bubbles.size()))
         {
-            drawHandle(bubbleRect(*bubbles[pickedIndex]));
+            sf::FloatRect r = bubbleRect(*bubbles[pickedIndex]);
+            drawResizeHandle(r);
+            drawFlipHandle(r);
         }
 
         window.display();
